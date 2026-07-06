@@ -29,9 +29,6 @@ export default function Navbar() {
                 <Link to="/bookings" className="px-3 py-2 rounded-lg text-sm font-medium hover:bg-primary-800 transition-colors">
                   My Bookings
                 </Link>
-                <Link to="/admin" className="px-3 py-2 rounded-lg text-sm font-medium hover:bg-primary-800 transition-colors">
-                  Admin
-                </Link>
                 <div className="flex items-center gap-2 ml-2 pl-2 border-l border-primary-700">
                   <span className="text-sm hidden sm:inline text-primary-200">
                     {user?.firstName}

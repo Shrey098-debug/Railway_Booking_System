@@ -8,12 +8,15 @@ import { useToast } from '../ui/Toast';
 
 export default function SearchForm({ compact }) {
   const today = new Date().toISOString().split('T')[0];
+  // Schedules are seeded for this window (see shared/seed/catalog.js). If "today"
+  // is before the window, default the search to the first seeded date so the very
+  // first search lands on real data instead of an empty result.
+  const SEED_START = '2026-09-01';
+  const defaultDate = today < SEED_START ? SEED_START : today;
   const { from, to, date, setSearchParams, setResults, setSearching, isSearching } = useSearchStore();
   const [fromCode, setFromCode] = useState(from);
   const [toCode, setToCode] = useState(to);
-  // Default to today so search always resolves a schedule (a train without a
-  // schedule for the searched date can't be booked — see search.service.js).
-  const [travelDate, setTravelDate] = useState(date || today);
+  const [travelDate, setTravelDate] = useState(date || defaultDate);
   const navigate = useNavigate();
   const showToast = useToast();
 

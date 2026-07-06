@@ -2,13 +2,16 @@
 
 This project is a microservices stack (6 Node services + React frontend) backed by
 just **PostgreSQL + Redis**. There is no Kafka/Zookeeper — services communicate over
-**Redis Streams** (inventory is created from `admin.schedule-created` events, bookings
-confirm from `payment.success` events), so the whole event bus is the Redis you already run.
+**Redis Streams**, so the whole event bus is the Redis you already run.
+
+There is **no admin UI** — the catalog (40 stations, 72 trains, ~4.4k schedules for
+**2026-09-01 → 2026-10-31**) comes from deterministic seed scripts
+(`shared/seed/catalog.js` + `admin-service/seed.js` + `inventory-service/seed.js`).
 
 ---
 
 ## Prerequisites
-- **Docker Desktop** (runs Postgres + Redis)
+- **Docker** (Docker Desktop or Colima) — runs Postgres + Redis
 - **Node.js 20+** (only if running services outside Docker)
 - ~5–8 GB free disk
 
@@ -16,85 +19,88 @@ confirm from `payment.success` events), so the whole event bus is the Redis you 
 
 ## A) Run locally
 
-You have two options.
-
 ### Option 1 — Everything in Docker (simplest)
 ```bash
-cp .env.prod.example .env        # fill secrets (Gmail, Google, Razorpay) + set strong passwords
+cp .env.prod.example .env        # fill secrets (Resend, Razorpay) + strong passwords
 docker compose -f docker-compose.prod.yml up -d --build
+# Seed the catalog (one-time — containers must be up):
+docker compose -f docker-compose.prod.yml exec admin-service node seed.js
+docker compose -f docker-compose.prod.yml exec inventory-service node seed.js
 # Frontend:  http://localhost
-# Gateway :  http://localhost:4000
 ```
-This builds and runs all services + infra together. First build takes a few minutes.
+Each service runs `prisma db push` on startup, so tables are created automatically.
 
-### Option 2 — Infra in Docker, services with npm (best for active development)
+### Option 2 — Infra in Docker, services with npm (best for development)
 ```bash
 # 1. Start only the infra (Postgres + Redis). The 5 databases auto-create.
 docker compose up -d
 
-# 2. Each service already has a .env (see "Environment" below). In separate terminals:
-cd user-service      && npm install && npx prisma migrate deploy && npm run dev
-cd admin-service     && npm install && npx prisma migrate deploy && npm run dev
-cd inventory-service && npm install && npx prisma migrate deploy && npm run dev
-cd payment-service   && npm install && npx prisma migrate deploy && npm run dev
-cd booking-service   && npm install && npx prisma migrate deploy && npm run dev
-cd api-gateway       && npm install && npm run dev
-cd frontend          && npm install && npm run dev      # http://localhost:3000
+# 2. Install deps + create tables (one-time):
+for d in api-gateway user-service admin-service booking-service inventory-service payment-service frontend; do (cd "$d" && npm install); done
+for d in user-service admin-service booking-service inventory-service payment-service; do (cd "$d" && npx prisma db push); done
+
+# 3. Seed the catalog (one-time):
+(cd admin-service && node seed.js) && (cd inventory-service && node seed.js)
+
+# 4. Run everything:
+./start-all.sh                   # frontend at http://localhost:3000
 ```
 
 ### Smoke test the flow
-1. Register (OTP is emailed via Gmail) → verify → login.
-2. As admin: create a station, a train, a route, then a **schedule** (this fires
-   `admin.schedule-created`, which the inventory service consumes to create seats).
-3. Search a train for that date → select seats → pay (Razorpay test mode) → booking confirms.
+1. Register — in dev the OTP **prints to the user-service console**; in production it's emailed via Resend.
+2. Search two seeded cities (e.g. New Delhi → Mumbai) on a date inside the seed window.
+3. Select seats → passengers → pay (Razorpay **test mode**, card `4111 1111 1111 1111`) → booking confirms.
 
 ---
 
 ## B) Deploy 100% free (Oracle Cloud Always Free)
 
-With Kafka gone, the stack is light enough that almost any free tier fits. The simplest
-path is to **self-host everything** on one Oracle Cloud *Always Free* VM (4 ARM cores /
-24 GB RAM, free forever) — far more than enough for Postgres, Redis, and every service.
-(Smaller free hosts like Render/Railway/Fly also work now that there's no broker to run.)
+The whole stack fits comfortably on one Oracle Cloud **Always Free** VM
+(Ampere ARM, up to 4 cores / 24 GB RAM — free forever). Everything is served from a
+single origin (nginx serves the frontend and proxies `/api` to the gateway), so
+login cookies and CORS work with zero extra configuration.
 
 ### Steps
 1. **Create the VM**: Oracle Cloud → Compute → Instances → Create. Pick an
-   **Ampere (ARM) Always Free** shape, Ubuntu 22.04. Download the SSH key.
-2. **Open ports**: in the VM's subnet Security List, allow inbound TCP **80** (and 443
-   if you add TLS). SSH (22) is open by default.
-3. **Install Docker** on the VM:
+   **Ampere (ARM) Always Free** shape (e.g. VM.Standard.A1.Flex, 2 OCPU / 12 GB),
+   Ubuntu 22.04 or 24.04. Download the SSH private key.
+2. **Open port 80**: VM's subnet → Security List → Add Ingress Rule →
+   source `0.0.0.0/0`, TCP, destination port **80**.
+3. **SSH in and install Docker**:
    ```bash
-   sudo apt update && sudo apt install -y docker.io docker-compose-plugin git
+   ssh -i <your-key> ubuntu@<vm-public-ip>
+   sudo apt update && sudo apt install -y docker.io docker-compose-v2 git
    sudo usermod -aG docker $USER && newgrp docker
    ```
 4. **Clone + configure**:
    ```bash
-   git clone https://github.com/AkGoyal2111/RailBook.git && cd RailBook
+   git clone https://github.com/Shrey098-debug/Railway_Booking_System.git && cd Railway_Booking_System
    cp .env.prod.example .env
-   nano .env     # set strong DB/Redis passwords, generate secrets (openssl rand -hex 32),
-                 # add Gmail app password, Google client id, Razorpay keys,
-                 # set PUBLIC_ORIGIN=http://<your-vm-public-ip>
+   nano .env     # strong DB/Redis passwords, secrets via `openssl rand -hex 32`,
+                 # RESEND_API_KEY + MAIL_FROM, Razorpay keys,
+                 # PUBLIC_ORIGIN=http://<vm-public-ip>
    ```
-5. **Launch**:
+5. **Launch + seed**:
    ```bash
    docker compose -f docker-compose.prod.yml up -d --build
+   docker compose -f docker-compose.prod.yml exec admin-service node seed.js
+   docker compose -f docker-compose.prod.yml exec inventory-service node seed.js
    ```
-6. Visit `http://<your-vm-public-ip>` — the frontend is served by nginx and proxies
-   `/api` to the gateway. Point your **Razorpay webhook** to
-   `http://<your-vm-public-ip>/api/payments/webhooks/razorpay`.
+6. Visit `http://<vm-public-ip>` — done. Optionally point a **Razorpay webhook** to
+   `http://<vm-public-ip>/api/payments/webhooks/razorpay` (client-side verify already
+   confirms bookings without it).
 
 ### Optional niceties (still free)
-- **Domain + HTTPS**: a free domain (e.g. DuckDNS) + Caddy/Traefik for auto-TLS.
-- **Frontend on Vercel** instead of the VM: deploy `frontend/` to Vercel, set its API
-  base URL to your gateway, and add that Vercel URL to `PUBLIC_ORIGIN` for CORS.
+- **Domain + HTTPS**: a free domain (e.g. DuckDNS) + Caddy for automatic TLS.
+- **Updating the app**: `git pull && docker compose -f docker-compose.prod.yml up -d --build`
 
 ---
 
 ## Environment reference
-- Each service reads its own `.env` (see each `*/.env.example`).
+- Production env lives in one root `.env` consumed by `docker-compose.prod.yml`.
 - Secrets that **must match** across services: `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`
   (gateway ↔ user) and `INTERNAL_SERVICE_KEY` (all internal calls).
-- Local infra defaults (from `docker-compose.yml`): Postgres `admin/irctcpass`,
-  Redis password `irctcpass` (also the event bus, at `localhost:6379`).
-- Real integrations you must supply: **Gmail app password** (OTP email),
-  **Google OAuth client id**, **Razorpay keys**.
+- **Email (OTP)**: set `RESEND_API_KEY` (free at resend.com — HTTP API, works where
+  hosts block SMTP). Gmail SMTP vars remain as an optional local-dev fallback.
+- **Google OAuth is optional** — without `GOOGLE_CLIENT_ID`, email/OTP login still works.
+- **Razorpay**: test-mode keys are fine; use card `4111 1111 1111 1111` at checkout.

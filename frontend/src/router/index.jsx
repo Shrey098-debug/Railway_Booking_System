@@ -8,7 +8,6 @@ import SeatSelectionPage from '../pages/SeatSelectionPage';
 import BookingPage from '../pages/BookingPage';
 import BookingDetailPage from '../pages/BookingDetailPage';
 import MyBookingsPage from '../pages/MyBookingsPage';
-import AdminPage from '../pages/AdminPage';
 import NotFoundPage from '../pages/NotFoundPage';
 
 export default function AppRouter() {
@@ -24,7 +23,6 @@ export default function AppRouter() {
           <Route path="/booking" element={<BookingPage />} />
           <Route path="/bookings" element={<MyBookingsPage />} />
           <Route path="/bookings/:bookingId" element={<BookingDetailPage />} />
-          <Route path="/admin" element={<AdminPage />} />
         </Route>
 
         <Route path="*" element={<NotFoundPage />} />

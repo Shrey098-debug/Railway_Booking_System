@@ -8,4 +8,4 @@ WORKDIR /app/inventory-service
 RUN npm install
 RUN npx prisma generate
 EXPOSE 4007
-CMD ["sh", "-c", "npx prisma migrate deploy && node src/index.js"]
+CMD ["sh", "-c", "npx prisma db push && node src/index.js"]
