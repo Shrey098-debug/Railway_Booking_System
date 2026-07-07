@@ -9,6 +9,15 @@ export default function StationAutocomplete({ label, value, onChange, placeholde
   const [loading, setLoading] = useState(false);
   const debouncedQuery = useDebounce(query, 300);
   const wrapperRef = useRef(null);
+  // Tracks the last value WE reported to the parent, so the sync effect below
+  // can tell an external change apart from our own — otherwise reporting '' for
+  // short input would wipe whatever the user is typing.
+  const lastReported = useRef(value || '');
+
+  const report = (code, name) => {
+    lastReported.current = code;
+    onChange(code, name);
+  };
 
   useEffect(() => {
     if (debouncedQuery.length < 2) {
@@ -38,14 +47,18 @@ export default function StationAutocomplete({ label, value, onChange, placeholde
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Sync external value changes
+  // Reflect only EXTERNAL value changes (e.g. parent reset it) — not the values
+  // we just reported ourselves — so typing is never wiped mid-keystroke.
   useEffect(() => {
-    if (value !== undefined && value !== query) setQuery(value);
+    if (value !== undefined && value !== lastReported.current) {
+      lastReported.current = value;
+      setQuery(value);
+    }
   }, [value]);
 
   const handleSelect = (station) => {
     setQuery(`${station.name} (${station.code})`);
-    onChange(station.code, station.name);
+    report(station.code, station.name);
     setOpen(false);
   };
 
@@ -57,7 +70,7 @@ export default function StationAutocomplete({ label, value, onChange, placeholde
         value={query}
         onChange={(e) => {
           setQuery(e.target.value);
-          if (e.target.value.length < 2) onChange('', '');
+          if (e.target.value.length < 2) report('', '');
         }}
         onFocus={() => suggestions.length > 0 && setOpen(true)}
         placeholder={placeholder}
