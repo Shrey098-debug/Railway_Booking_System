@@ -4,6 +4,7 @@ import { useAuthStore } from '../../store/auth.store';
 import { useBookingStore } from '../../store/booking.store';
 import { bookingApi } from '../../api/booking.api';
 import { loadRazorpayScript, openRazorpayCheckout } from '../../utils/razorpay';
+import { uuid } from '../../utils/uuid';
 import { useToast } from '../ui/Toast';
 import Button from '../ui/Button';
 
@@ -19,7 +20,7 @@ export default function PaymentButton({ passengers, scheduleId, seatIds, disable
   const handlePay = async () => {
     setLoading(true);
     try {
-      const idempotencyKey = crypto.randomUUID();
+      const idempotencyKey = uuid();
       // --- SEGMENT BOOKING: Include fromStation/toStation segment params ---
       const res = await bookingApi.create({
         scheduleId, seatIds, passengers, idempotencyKey,
