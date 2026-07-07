@@ -4,12 +4,16 @@ const {config} = require('../config');
 const authService = require('../services/auth.service');
 const getDeviceFingerprint = require("../utils/deviceFingerprint");
 
-const isProd = process.env.NODE_ENV === 'production';
+// Cookies are marked Secure only when the site is served over HTTPS.
+// On a plain-HTTP deployment (e.g. a bare IP with no TLS) browsers drop Secure
+// cookies, which breaks OTP verification and login. Default off; set
+// COOKIE_SECURE=true once you put the app behind HTTPS.
+const cookieSecure = process.env.COOKIE_SECURE === 'true';
 
 const cookieOptions = (maxAge) => ({
      httpOnly: true,
-     secure: isProd,
-     sameSite: isProd ? 'strict' : 'lax',
+     secure: cookieSecure,
+     sameSite: cookieSecure ? 'strict' : 'lax',
      maxAge,
 });
 
